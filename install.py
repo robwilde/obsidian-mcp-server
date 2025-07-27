@@ -184,8 +184,9 @@ def choose_scope() -> str:
 def add_mcp_server(server_path: Path, vault_path: Path, scope: str) -> bool:
     """Add MCP server using claude mcp add command"""
     try:
-        # Build the command
-        cmd = f'claude mcp add obsidian-claude-code -s {scope} -e OBSIDIAN_VAULT_PATH="{vault_path}" python3 "{server_path}"'
+        # Build the command with correct syntax
+        # Format: claude mcp add <name> <command> [args...] [flags]
+        cmd = f'claude mcp add obsidian-claude-code python3 "{server_path}" -s {scope} -e OBSIDIAN_VAULT_PATH="{vault_path}"'
         
         print_info(f"Adding MCP server with {scope} scope...")
         result = run_command(cmd)
