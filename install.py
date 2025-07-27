@@ -83,17 +83,30 @@ def check_python_version() -> bool:
 
 
 def check_mcp_installed() -> bool:
-    """Check if MCP package is installed"""
+    """Check if MCP package and its dependencies are installed"""
     try:
         import mcp
         print_success("MCP package is installed")
         
-        # Check if jsonschema is also available (required by MCP)
-        try:
-            import jsonschema
-            print_success("jsonschema dependency is available")
-        except ImportError:
-            print_warning("jsonschema dependency missing - will install")
+        # Check critical dependencies that often cause import issues
+        dependencies = [
+            ("jsonschema", "jsonschema"),
+            ("pydantic", "pydantic"),
+            ("anyio", "anyio"),
+            ("httpx", "httpx")
+        ]
+        
+        missing_deps = []
+        for dep_name, import_name in dependencies:
+            try:
+                __import__(import_name)
+                print_success(f"{dep_name} dependency is available")
+            except ImportError:
+                print_warning(f"{dep_name} dependency missing")
+                missing_deps.append(dep_name)
+        
+        if missing_deps:
+            print_warning(f"Missing dependencies: {', '.join(missing_deps)} - will install")
             return False
             
         return True
@@ -106,24 +119,30 @@ def install_mcp() -> bool:
     """Install the MCP package and its dependencies"""
     print_info("Installing MCP package and dependencies...")
     try:
-        # Install MCP first
-        result = run_command("pip install mcp")
+        # Uninstall and reinstall MCP to ensure clean state
+        print_info("Ensuring clean MCP installation...")
+        run_command("pip uninstall -y mcp", check=False)
+        
+        # Install MCP with all dependencies to user packages
+        result = run_command("pip install --user mcp")
         if result.returncode != 0:
             print_error("Failed to install MCP package")
             return False
         print_success("MCP package installed successfully")
         
-        # Ensure jsonschema is installed in user packages to avoid import conflicts
-        print_info("Installing jsonschema dependency to user packages...")
-        result = run_command("pip install --user --force-reinstall jsonschema")
-        if result.returncode != 0:
-            print_warning("Failed to install jsonschema to user packages")
-            print_info("Trying alternative installation...")
-            result = run_command("pip install jsonschema")
+        # Ensure critical dependencies are in user packages to avoid conflicts
+        critical_deps = ["jsonschema", "pydantic", "anyio", "httpx"]
+        for dep in critical_deps:
+            print_info(f"Installing {dep} dependency to user packages...")
+            result = run_command(f"pip install --user --force-reinstall {dep}")
             if result.returncode != 0:
-                print_error("Failed to install jsonschema dependency")
-                return False
-        print_success("jsonschema dependency installed successfully")
+                print_warning(f"Failed to install {dep} to user packages")
+                print_info(f"Trying alternative {dep} installation...")
+                result = run_command(f"pip install {dep}")
+                if result.returncode != 0:
+                    print_error(f"Failed to install {dep} dependency")
+                    return False
+            print_success(f"{dep} dependency installed successfully")
         
         return True
     except Exception as e:
