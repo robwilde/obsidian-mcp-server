@@ -87,6 +87,15 @@ def check_mcp_installed() -> bool:
     try:
         import mcp
         print_success("MCP package is installed")
+        
+        # Check if jsonschema is also available (required by MCP)
+        try:
+            import jsonschema
+            print_success("jsonschema dependency is available")
+        except ImportError:
+            print_warning("jsonschema dependency missing - will install")
+            return False
+            
         return True
     except ImportError:
         print_warning("MCP package not found")
@@ -94,16 +103,29 @@ def check_mcp_installed() -> bool:
 
 
 def install_mcp() -> bool:
-    """Install the MCP package"""
-    print_info("Installing MCP package...")
+    """Install the MCP package and its dependencies"""
+    print_info("Installing MCP package and dependencies...")
     try:
+        # Install MCP first
         result = run_command("pip install mcp")
-        if result.returncode == 0:
-            print_success("MCP package installed successfully")
-            return True
-        else:
+        if result.returncode != 0:
             print_error("Failed to install MCP package")
             return False
+        print_success("MCP package installed successfully")
+        
+        # Ensure jsonschema is installed in user packages to avoid import conflicts
+        print_info("Installing jsonschema dependency to user packages...")
+        result = run_command("pip install --user --force-reinstall jsonschema")
+        if result.returncode != 0:
+            print_warning("Failed to install jsonschema to user packages")
+            print_info("Trying alternative installation...")
+            result = run_command("pip install jsonschema")
+            if result.returncode != 0:
+                print_error("Failed to install jsonschema dependency")
+                return False
+        print_success("jsonschema dependency installed successfully")
+        
+        return True
     except Exception as e:
         print_error(f"Error installing MCP: {e}")
         return False
