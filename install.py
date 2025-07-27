@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Obsidian MCP Server Installer for Claude Code
-Interactive installer that sets up the Obsidian MCP integration
+Uses standard claude mcp add commands with proper scope configuration
 """
 
 import json
@@ -57,6 +57,21 @@ def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
         return e
 
 
+def check_claude_code_available() -> bool:
+    """Check if Claude Code CLI is available"""
+    try:
+        result = run_command("claude --version", check=False)
+        if result.returncode == 0:
+            print_success("Claude Code CLI is available")
+            return True
+        else:
+            print_error("Claude Code CLI not found")
+            return False
+    except Exception:
+        print_error("Claude Code CLI not found")
+        return False
+
+
 def check_python_version() -> bool:
     """Check if Python 3.8+ is available"""
     if sys.version_info >= (3, 8):
@@ -92,13 +107,6 @@ def install_mcp() -> bool:
     except Exception as e:
         print_error(f"Error installing MCP: {e}")
         return False
-
-
-def get_claude_config_dir() -> Path:
-    """Get the Claude configuration directory"""
-    claude_dir = Path.home() / ".claude"
-    claude_dir.mkdir(exist_ok=True)
-    return claude_dir
 
 
 def get_obsidian_vault_path() -> Optional[Path]:
@@ -139,78 +147,57 @@ def get_obsidian_vault_path() -> Optional[Path]:
                 print("Please enter a valid path.")
 
 
-def install_mcp_server(vault_path: Path) -> bool:
-    """Install the MCP server to global Claude directory"""
-    claude_dir = get_claude_config_dir()
+def get_server_path() -> Path:
+    """Get the absolute path to the MCP server file"""
+    # Get the directory where this script is located
+    script_dir = Path(__file__).parent.absolute()
+    server_file = script_dir / "obsidian_mcp_server.py"
     
-    # Copy the server file
-    source_file = Path(__file__).parent / "obsidian_mcp_server.py"
-    target_file = claude_dir / "obsidian_mcp_server.py"
+    if not server_file.exists():
+        print_error(f"MCP server file not found: {server_file}")
+        sys.exit(1)
     
-    if not source_file.exists():
-        print_error(f"Source file not found: {source_file}")
-        return False
+    print_success(f"Found MCP server at: {server_file}")
+    return server_file
+
+
+def choose_scope() -> str:
+    """Let user choose MCP server scope"""
+    print_info("Choose MCP server scope:")
+    print("  1. user - Available across all your projects (recommended)")
+    print("  2. local - Only for this specific project")
+    print("  3. project - Shared with team via version control")
     
-    try:
-        shutil.copy2(source_file, target_file)
-        target_file.chmod(0o755)  # Make executable
-        print_success(f"Installed MCP server to: {target_file}")
+    while True:
+        choice = input("Enter choice (1-3) [1]: ").strip() or "1"
         
-        # Set environment variable for vault path
-        env_file = claude_dir / "obsidian.env"
-        with open(env_file, "w") as f:
-            f.write(f"OBSIDIAN_VAULT_PATH={vault_path}\n")
-        print_success(f"Created environment config: {env_file}")
-        
-        return True
-    except Exception as e:
-        print_error(f"Failed to install MCP server: {e}")
-        return False
+        if choice == "1":
+            return "user"
+        elif choice == "2":
+            return "local"
+        elif choice == "3":
+            return "project"
+        else:
+            print_warning("Please enter 1, 2, or 3")
 
 
-def get_claude_settings_path() -> Path:
-    """Get Claude Code settings file path"""
-    return get_claude_config_dir() / "settings.json"
-
-
-def update_claude_settings(server_path: Path, vault_path: Path) -> bool:
-    """Update Claude Code settings to include the MCP server"""
-    settings_file = get_claude_settings_path()
-    
-    # Load existing settings or create new
-    if settings_file.exists():
-        try:
-            with open(settings_file, "r") as f:
-                settings = json.load(f)
-        except json.JSONDecodeError:
-            print_warning("Invalid JSON in settings file, creating backup")
-            shutil.copy2(settings_file, settings_file.with_suffix(".bak"))
-            settings = {}
-    else:
-        settings = {}
-    
-    # Ensure mcpServers section exists
-    if "mcpServers" not in settings:
-        settings["mcpServers"] = {}
-    
-    # Add our Obsidian MCP server
-    server_config = {
-        "command": "python3",
-        "args": [str(server_path)],
-        "env": {
-            "OBSIDIAN_VAULT_PATH": str(vault_path)
-        }
-    }
-    
-    settings["mcpServers"]["obsidian-claude-code"] = server_config
-    
+def add_mcp_server(server_path: Path, vault_path: Path, scope: str) -> bool:
+    """Add MCP server using claude mcp add command"""
     try:
-        with open(settings_file, "w") as f:
-            json.dump(settings, f, indent=2)
-        print_success(f"Updated Claude Code settings: {settings_file}")
-        return True
+        # Build the command
+        cmd = f'claude mcp add obsidian-claude-code -s {scope} -e OBSIDIAN_VAULT_PATH="{vault_path}" python3 "{server_path}"'
+        
+        print_info(f"Adding MCP server with {scope} scope...")
+        result = run_command(cmd)
+        
+        if result.returncode == 0:
+            print_success(f"MCP server added successfully with {scope} scope")
+            return True
+        else:
+            print_error(f"Failed to add MCP server: {result.stderr}")
+            return False
     except Exception as e:
-        print_error(f"Failed to update settings: {e}")
+        print_error(f"Error adding MCP server: {e}")
         return False
 
 
@@ -254,12 +241,32 @@ def create_project_config() -> bool:
         return False
 
 
+def remove_existing_server() -> bool:
+    """Remove existing obsidian-claude-code server if it exists"""
+    try:
+        # Try to remove from all scopes
+        for scope in ["local", "user", "project"]:
+            result = run_command(f"claude mcp remove obsidian-claude-code -s {scope}", check=False)
+            if result.returncode == 0:
+                print_success(f"Removed existing server from {scope} scope")
+        return True
+    except Exception as e:
+        print_warning(f"Could not remove existing servers: {e}")
+        return True  # Continue anyway
+
+
 def main():
     """Main installation process"""
     print_header("Obsidian MCP Server Installer for Claude Code")
+    print_info("Using standard claude mcp add commands with proper scope configuration")
     
     # Check requirements
     print_header("Checking Requirements")
+    
+    if not check_claude_code_available():
+        print_error("Claude Code CLI is required but not found")
+        print_info("Please ensure Claude Code is installed and available in your PATH")
+        sys.exit(1)
     
     if not check_python_version():
         sys.exit(1)
@@ -269,24 +276,24 @@ def main():
             print_error("Cannot proceed without MCP package")
             sys.exit(1)
     
-    # Get Obsidian vault path
-    print_header("Obsidian Configuration")
+    # Get configuration
+    print_header("Configuration")
+    
+    server_path = get_server_path()
     vault_path = get_obsidian_vault_path()
     if not vault_path:
         print_error("Cannot proceed without vault path")
         sys.exit(1)
     
-    # Install MCP server globally
+    scope = choose_scope()
+    
+    # Remove existing server
+    print_header("Removing Existing Configuration")
+    remove_existing_server()
+    
+    # Add MCP server
     print_header("Installing MCP Server")
-    claude_dir = get_claude_config_dir()
-    server_path = claude_dir / "obsidian_mcp_server.py"
-    
-    if not install_mcp_server(vault_path):
-        sys.exit(1)
-    
-    # Update Claude Code settings
-    print_header("Configuring Claude Code")
-    if not update_claude_settings(server_path, vault_path):
+    if not add_mcp_server(server_path, vault_path, scope):
         sys.exit(1)
     
     # Offer to create project config
@@ -302,13 +309,21 @@ def main():
     print(f"  2. Ask Claude Code to 'save to Obsidian' in any project")
     print(f"  3. Files will be saved to your vault at: {vault_path}")
     print()
-    print_info("To add project configs to other directories, run:")
+    print_info("To view installed MCP servers:")
+    print(f"  claude mcp list")
+    print()
+    print_info("To add project configs to other directories:")
     print(f"  python3 {Path(__file__).absolute()} --project-config")
+
+
+def project_config_only():
+    """Only create project configuration"""
+    print_header("Project Configuration Setup")
+    create_project_config()
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--project-config":
-        print_header("Project Configuration Setup")
-        create_project_config()
+        project_config_only()
     else:
         main()
