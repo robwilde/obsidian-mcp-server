@@ -297,10 +297,20 @@ def main():
     if not add_mcp_server(server_path, vault_path, scope):
         sys.exit(1)
     
-    # Offer to create project config
+    # Handle project configuration based on scope and location
     print_header("Project Configuration")
-    if input("Create project configuration for current directory? (y/n): ").lower().startswith('y'):
-        create_project_config()
+    
+    if scope == "user":
+        print_info("User-scoped MCP server installed successfully!")
+        print_info("You can now use 'save to Obsidian' in any project directory.")
+        print()
+        print_info("To add project-specific configuration to any project:")
+        print(f"  cd /path/to/your/project")
+        print(f"  python3 {Path(__file__).absolute()} --project-config")
+    else:
+        # For local/project scope, offer to create config in current directory
+        if input("Create project configuration for current directory? (y/n): ").lower().startswith('y'):
+            create_project_config()
     
     # Final instructions
     print_header("Installation Complete!")
@@ -317,9 +327,29 @@ def main():
     print(f"  python3 {Path(__file__).absolute()} --project-config")
 
 
+def check_existing_mcp_server() -> bool:
+    """Check if obsidian-claude-code MCP server is already installed"""
+    try:
+        result = run_command("claude mcp list", check=False)
+        if result.returncode == 0 and "obsidian-claude-code" in result.stdout:
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def project_config_only():
     """Only create project configuration"""
     print_header("Project Configuration Setup")
+    
+    # Check if MCP server is already installed
+    if not check_existing_mcp_server():
+        print_error("Obsidian MCP server not found!")
+        print_info("Please run the full installer first:")
+        print(f"  python3 {Path(__file__).absolute()}")
+        sys.exit(1)
+    
+    print_success("Found existing Obsidian MCP server")
     create_project_config()
 
 
