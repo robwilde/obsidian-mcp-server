@@ -22,7 +22,7 @@ This MCP (Model Context Protocol) server creates a bridge between Claude Code an
 Clone this repository and run the interactive installer:
 
 ```bash
-git clone https://github.com/your-username/obsidian-mcp-server.git
+git clone https://github.com/robwilde/obsidian-mcp-server.git
 cd obsidian-mcp-server
 python3 install.py
 ```
