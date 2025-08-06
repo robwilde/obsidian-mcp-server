@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
+from urllib.parse import unquote, urlparse, parse_qs
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -110,6 +111,20 @@ async def handle_list_tools():
                 },
                 "required": ["content", "title"]
             }
+        ),
+        Tool(
+            name="read_obsidian_url",
+            description="Read a file from Obsidian using an Obsidian URL format (e.g., obsidian://open?vault=VaultName&file=path/to/file). Handles URL-encoded file paths with spaces and special characters.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The Obsidian URL (e.g., obsidian://open?vault=MyVault&file=Notes%2FMy%20Note)"
+                    }
+                },
+                "required": ["url"]
+            }
         )
     ]
 
@@ -124,8 +139,70 @@ async def handle_call_tool(name: str, arguments: dict):
             arguments.get("type", "note"),
             arguments.get("tags", [])
         )
+    elif name == "read_obsidian_url":
+        return await read_obsidian_url(
+            arguments.get("url", "")
+        )
     else:
         raise ValueError(f"Unknown tool: {name}")
+
+
+async def read_obsidian_url(url: str):
+    """Read a file from Obsidian using an Obsidian URL"""
+    try:
+        # Parse the Obsidian URL
+        parsed = urlparse(url)
+        
+        # Check if it's an Obsidian URL
+        if parsed.scheme != "obsidian":
+            raise ValueError(f"Not an Obsidian URL: {url}")
+        
+        # Parse query parameters
+        params = parse_qs(parsed.query)
+        
+        # Get vault name and file path
+        vault_name = params.get("vault", [""])[0]
+        file_path = params.get("file", [""])[0]
+        
+        if not file_path:
+            raise ValueError("No file path specified in URL")
+        
+        # URL decode the file path to handle spaces and special characters
+        file_path = unquote(file_path)
+        
+        # Get the vault path from environment
+        vault_path = get_vault_path()
+        
+        # Check if the vault name matches (optional - for validation)
+        # In practice, we'll use the configured vault path regardless
+        
+        # Construct the full path to the file
+        # Replace forward slashes with OS-appropriate separators
+        file_path_parts = file_path.split('/')
+        full_path = vault_path
+        for part in file_path_parts:
+            full_path = full_path / part
+        
+        # Add .md extension if not present
+        if not full_path.suffix:
+            full_path = full_path.with_suffix('.md')
+        
+        # Check if file exists
+        if not full_path.exists():
+            raise FileNotFoundError(f"File not found: {full_path}")
+        
+        # Read the file content
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        return [
+            {
+                "type": "text",
+                "text": f"Successfully read file from Obsidian\nVault: {vault_name}\nFile: {file_path}\nPath: {full_path}\n\n---\n\n{content}"
+            }
+        ]
+    except Exception as e:
+        raise Exception(f"Failed to read Obsidian URL: {str(e)}")
 
 
 async def save_to_obsidian(content: str, title: str, content_type: str, tags: List[str]):
