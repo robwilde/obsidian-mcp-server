@@ -13,6 +13,7 @@ This MCP (Model Context Protocol) server creates a bridge between Claude Code an
 - **🎨 Rich Formatting**: Automatic frontmatter, timestamps, and structured templates
 - **⚙️ Easy Setup**: One-command installation with interactive configuration
 - **🔧 Flexible Templates**: Customizable templates for reports, reviews, and notes
+- **🔗 Obsidian URL Support**: Read files directly from Obsidian URLs with space/special character handling
 
 ## Quick Start
 
@@ -41,9 +42,11 @@ After installation, simply ask Claude Code:
 "Create a security review of the authentication system and save to Obsidian"
 "Generate API documentation and save it to Obsidian as a report"
 "Document the database schema and save to Obsidian"
+"Read this Obsidian file: obsidian://open?vault=MyVault&file=Notes/ProjectPlan"
+"@obsidian obsidian://open?vault=MyVault&file=Docs%2FMeeting%20Notes%202025"
 ```
 
-Claude Code will automatically use the `save_to_obsidian` tool to format and save content to your vault.
+Claude Code will automatically use the appropriate tools to interact with your Obsidian vault.
 
 ## Project Configuration
 
@@ -112,10 +115,11 @@ obsidian-mcp-server/
 
 The MCP server provides these tools to Claude Code:
 
-- **`save_to_obsidian`**: Primary tool for saving formatted content
-- **`save_claude_response`**: Direct response saving
-- **`list_vault_files`**: Browse existing vault files
-- **`get_vault_structure`**: View vault folder hierarchy
+- **`save_to_obsidian`**: Primary tool for saving formatted content with templates
+- **`read_obsidian_url`**: Read files from Obsidian URLs (handles URL encoding for spaces and special characters)
+- **`save_claude_response`**: Direct response saving (if implemented via hooks)
+- **`list_vault_files`**: Browse existing vault files (planned)
+- **`get_vault_structure`**: View vault folder hierarchy (planned)
 
 ### Generated File Format
 
@@ -152,6 +156,27 @@ tags: [claude-code, report, project-name]
 - **MCP Python package** (auto-installed by installer)
 
 ## Advanced Usage
+
+### Reading Obsidian URLs
+
+The `read_obsidian_url` tool allows Claude Code to read files directly from Obsidian URLs:
+
+```
+# Basic usage
+"Read file from: obsidian://open?vault=MyVault&file=Notes/ProjectPlan"
+
+# With URL-encoded spaces and special characters
+"@obsidian obsidian://open?vault=MyVault&file=Meeting%20Notes%2FQ1%202025"
+
+# Files with special characters in names
+"Read: obsidian://open?vault=DevNotes&file=Issues%2FWAI-130%20Assignee%20field"
+```
+
+The tool automatically:
+- Parses the vault name and file path from the URL
+- Handles URL-encoded characters (spaces, slashes, special chars)
+- Adds .md extension if not present
+- Uses the configured `OBSIDIAN_VAULT_PATH` to locate files
 
 ### Custom Templates
 
